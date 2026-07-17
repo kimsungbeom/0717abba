@@ -1,0 +1,12 @@
+{
+  "name": "pinball-soccer",
+  "version": "1.0.0",
+  "description": "핀볼 축구 게임",
+  "scripts": {
+    "start": "node server/server.js",
+    "build": "cd server && npm install"
+  },
+  "dependencies": {
+    "ws": "^8.16.0"
+  }
+}

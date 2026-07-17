@@ -1,0 +1,830 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>핀볼 축구</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;margin:0;padding:0;overflow:hidden}
+body{background:#0a0a1a;color:#fff;font-family:'Segoe UI',sans-serif;display:flex;justify-content:center;align-items:center;touch-action:none;user-select:none}
+#app{position:relative;width:100%;height:100%;background:#0d1520;overflow:hidden}
+.screen{position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;padding:30px}
+.screen.active{display:flex}
+h1{font-size:2.2em;margin-bottom:6px;background:linear-gradient(135deg,#4fc3f7,#00e676);-webkit-background-clip:text;-webkit-text-fill-color:transparent;text-shadow:none}
+.sub{color:#667;font-size:0.9em;margin-bottom:28px}
+.btn{padding:14px 40px;border:none;border-radius:10px;font-size:1.05em;cursor:pointer;transition:all .2s;font-weight:bold;width:240px;margin:6px 0;letter-spacing:1px}
+.btn-primary{background:linear-gradient(135deg,#4fc3f7,#0288d1);color:#fff}
+.btn-primary:hover{transform:translateY(-2px);box-shadow:0 6px 20px rgba(79,195,247,0.4)}
+.btn-success{background:linear-gradient(135deg,#66bb6a,#2e7d32);color:#fff}
+.btn-success:hover{transform:translateY(-2px);box-shadow:0 6px 20px rgba(102,187,106,0.4)}
+.btn-danger{background:linear-gradient(135deg,#ef5350,#b71c1c);color:#fff}
+.btn-danger:hover{transform:translateY(-2px);box-shadow:0 6px 20px rgba(239,83,80,0.4)}
+.btn-gold{background:linear-gradient(135deg,#ffd700,#ff8f00);color:#1a1a2e}
+.btn-gold:hover{transform:translateY(-2px);box-shadow:0 6px 20px rgba(255,215,0,0.4)}
+.btn:disabled{opacity:0.4;cursor:not-allowed;transform:none!important}
+.btn-ghost{background:transparent;color:#556;border:1px solid #334}
+input[type="text"]{padding:13px 16px;border:2px solid #2a3a4a;border-radius:10px;font-size:1em;background:#0d1520;color:#fff;width:240px;margin:5px 0;text-align:center;outline:none;transition:border .2s}
+input[type="text"]:focus{border-color:#4fc3f7}
+input.code-input{font-size:2.2em;letter-spacing:14px;font-weight:bold;width:160px;padding:16px;background:#0d1520;border-color:#4fc3f7}
+.room-code{font-size:3.2em;font-weight:bold;color:#ffd700;text-shadow:0 0 30px rgba(255,215,0,0.4);letter-spacing:12px;margin:12px 0;font-family:monospace}
+.player-list{width:100%;max-width:420px;margin:12px 0;display:grid;grid-template-columns:1fr 1fr;gap:5px}
+.player-item{display:flex;align-items:center;padding:7px 12px;background:rgba(255,255,255,0.04);border-radius:6px;font-size:0.85em;border:1px solid rgba(255,255,255,0.05)}
+.player-item .idx{width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.75em;font-weight:bold;margin-right:10px;color:#fff;flex-shrink:0}
+.player-item .crown{color:#ffd700;margin-left:6px;font-size:0.8em}
+canvas{display:block;touch-action:none}
+#gameCanvas{background:#0d1520;cursor:pointer;object-fit:contain}
+#topBar{display:flex;justify-content:space-between;align-items:center;padding:6px 14px;background:rgba(0,0,0,0.5);height:38px;font-size:0.85em}
+#topBar .code{color:#4fc3f7;font-weight:bold}
+#topBar .scores{display:flex;gap:4px;flex-wrap:wrap}
+#topBar .scores span{padding:1px 7px;border-radius:3px;font-size:0.8em;font-weight:bold}
+.conn-status{position:absolute;top:6px;right:14px;font-size:0.7em;padding:2px 10px;border-radius:12px;z-index:10}
+.conn-status.ok{background:rgba(76,175,80,0.25);color:#66bb6a}
+.conn-status.bad{background:rgba(239,83,80,0.25);color:#ef5350}
+.conn-status.wait{background:rgba(255,193,7,0.25);color:#ffc107}
+.waiting-msg{color:#556;margin:15px 0;text-align:center;line-height:1.6;font-size:0.9em}
+.game-overlay{position:absolute;inset:0;display:none;background:rgba(0,0,0,0.75);flex-direction:column;align-items:center;justify-content:center;z-index:20}
+.game-overlay.show{display:flex}
+#canvasWrap{flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative}
+#scrGame.screen{padding:0;display:none;flex-direction:column}
+#scrGame.screen.active{display:flex}
+#leaveGameBtn{flex-shrink:0}
+#dashBtn{position:absolute;bottom:max(24px, env(safe-area-inset-bottom,24px));right:max(24px, env(safe-area-inset-right,24px));width:76px;height:76px;border-radius:50%;border:3px solid rgba(255,215,0,0.5);background:rgba(255,215,0,0.12);color:#ffd700;font-size:0.65em;font-weight:bold;z-index:30;display:none;align-items:center;justify-content:center;cursor:pointer;touch-action:none;flex-direction:column;line-height:1.2;backdrop-filter:blur(4px);letter-spacing:0;text-align:center}
+#dashBtn:active{background:rgba(255,215,0,0.35);transform:scale(0.9)}
+@media(pointer:coarse){#dashBtn{display:flex}}
+@media(min-width:881px){
+#app{border-radius:16px;box-shadow:0 0 80px rgba(0,100,255,0.15);border:1px solid rgba(0,150,255,0.2);height:min(880px, 100vh);width:min(360px, 100vw)}
+}
+@media(max-width:880px){
+#app{border-radius:0;height:100dvh}
+.screen{padding:max(12px, env(safe-area-inset-top,12px)) max(12px, env(safe-area-inset-right,12px)) max(12px, env(safe-area-inset-bottom,12px)) max(12px, env(safe-area-inset-left,12px))}
+#scrGame.screen{padding:0}
+#topBar{font-size:0.55em;padding:2px 4px;height:26px;min-height:26px}
+#topBar .scores span{font-size:0.5em;padding:1px 2px}
+#topBar .code{font-size:0.75em}
+#leaveGameBtn{font-size:0.55em!important;padding:1px 4px!important}
+h1{font-size:clamp(1em, 5vw, 1.3em)}
+.sub{font-size:clamp(0.6em, 3vw, 0.75em);margin-bottom:12px}
+.btn{width:min(200px, 80vw);padding:10px 20px;font-size:clamp(0.75em, 3.5vw, 0.9em)}
+input[type="text"]{width:min(200px, 80vw);padding:10px 12px;font-size:clamp(0.8em, 3.5vw, 0.95em)}
+input.code-input{width:min(130px, 50vw);font-size:clamp(1.4em, 7vw, 1.8em);letter-spacing:6px}
+.player-list{gap:4px}
+.player-item{padding:5px 8px;font-size:clamp(0.65em, 2.8vw, 0.8em)}
+#dashBtn{bottom:max(14px, env(safe-area-inset-bottom,14px));right:max(14px, env(safe-area-inset-right,14px));width:clamp(56px, 14vw, 76px);height:clamp(56px, 14vw, 76px);font-size:clamp(0.5em, 2.5vw, 0.65em)}
+.room-code{font-size:clamp(1.8em, 8vw, 3.2em);letter-spacing:6px}
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="connStatus" class="conn-status bad">연결 중...</div>
+
+  <!-- 메뉴 -->
+  <div id="scrMenu" class="screen active">
+    <h1>⚽ 핀볼 축구</h1>
+    <div class="sub">최대 8명이 함께하는 핀볼 스타일 축구 게임</div>
+    <button class="btn btn-primary" onclick="showScreen('scrCreate')">방 만들기</button>
+    <button class="btn btn-success" onclick="showScreen('scrJoin')">방 참여하기</button>
+    <div style="color:#334;font-size:0.65em;position:absolute;bottom:12px">v2.0</div>
+  </div>
+
+  <!-- 방만들기 -->
+  <div id="scrCreate" class="screen">
+    <h1>방 만들기</h1>
+    <input type="text" id="nickC" placeholder="닉네임" maxlength="8" value="방장">
+    <button class="btn btn-primary" onclick="createRoom()">방 생성</button>
+    <button class="btn btn-ghost" onclick="showScreen('scrMenu')">← 뒤로</button>
+  </div>
+
+  <!-- 방참여 -->
+  <div id="scrJoin" class="screen">
+    <h1>방 참여</h1>
+    <input type="text" id="nickJ" placeholder="닉네임" maxlength="8" value="플레이어">
+    <input type="text" class="code-input" id="codeInput" placeholder="00" maxlength="2" oninput="this.value=this.value.replace(/[^0-9]/g,'')">
+    <button class="btn btn-success" onclick="joinRoom()">참여하기</button>
+    <button class="btn btn-ghost" onclick="showScreen('scrMenu')">← 뒤로</button>
+  </div>
+
+  <!-- 로비 -->
+  <div id="scrLobby" class="screen">
+    <h1 style="font-size:1.3em">방 코드</h1>
+    <div class="room-code" id="roomCodeLabel">--</div>
+    <div class="sub" id="playerCount">0/8</div>
+    <div class="player-list" id="playerList"></div>
+    <button class="btn btn-gold" id="startBtn" onclick="startGame()">🏆 게임 시작</button>
+    <button class="btn btn-ghost" onclick="leaveRoom()">나가기</button>
+  </div>
+
+  <!-- 게임 -->
+  <div id="scrGame" class="screen" style="padding:0">
+    <div id="topBar">
+      <button id="leaveGameBtn" onclick="leaveRoom()" style="background:rgba(239,83,80,0.25);color:#ef5350;border:none;padding:3px 12px;border-radius:6px;cursor:pointer;font-size:0.8em;font-weight:bold;white-space:nowrap">✕ 나가기</button>
+      <span class="code" id="gameCode">방 --</span>
+      <div class="scores" id="scoreBar"></div>
+    </div>
+    <div id="canvasWrap" style="flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative">
+      <canvas id="gameCanvas"></canvas>
+    </div>
+    <button id="dashBtn">⚡<br>대시</button>
+    <div class="game-overlay" id="gameOverlay">
+      <h1 style="font-size:2em" id="resultTitle">게임 종료</h1>
+      <div id="resultDetail" style="color:#aaa;margin:12px 0;font-size:1em"></div>
+      <button class="btn btn-primary" onclick="leaveRoom()">나가기</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const SVR = (() => {
+  const l = window.location;
+  if (l.hostname === '127.0.0.1' || l.hostname === 'localhost') return `ws://${l.hostname}:3000`;
+  return `${l.protocol === 'https:' ? 'wss:' : 'ws:'}//${l.host}`;
+})();
+
+let CW = 360, CH = 880;
+let ws = null;
+let roomCode = null, pid = null, pidx = -1, isHost = false;
+let gs = null;
+let anim = null;
+let mx = CW/2, my = CH/2;
+let playerMap = {};
+let dashPressed = false;
+
+// === 효과음 (Web Audio API) ===
+const SFX = (() => {
+  let audioCtx = null;
+  function getCtx() {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    return audioCtx;
+  }
+  function tone(freq, dur, type, vol) {
+    try {
+      const ctx = getCtx();
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.type = type;
+      o.frequency.setValueAtTime(freq, ctx.currentTime);
+      g.gain.setValueAtTime(vol, ctx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur);
+      o.connect(g); g.connect(ctx.destination);
+      o.start(); o.stop(ctx.currentTime + dur);
+    } catch(e) {}
+  }
+  function noise(dur, vol) {
+    try {
+      const ctx = getCtx();
+      const len = ctx.sampleRate * dur;
+      const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+      const s = ctx.createBufferSource();
+      s.buffer = buf;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(vol, ctx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur);
+      s.connect(g); g.connect(ctx.destination);
+      s.start();
+    } catch(e) {}
+  }
+  return {
+    bumper() { tone(880, 0.1, 'square', 0.15); tone(1320, 0.08, 'sine', 0.1); },
+    wall() { tone(150, 0.12, 'triangle', 0.2); },
+    kick() { tone(440, 0.08, 'square', 0.12); },
+    goal() {
+      setTimeout(() => tone(523, 0.2, 'sine', 0.2), 0);
+      setTimeout(() => tone(659, 0.2, 'sine', 0.2), 150);
+      setTimeout(() => tone(784, 0.3, 'sine', 0.25), 300);
+    },
+    start() {
+      tone(440, 0.15, 'square', 0.1);
+      setTimeout(() => tone(660, 0.15, 'square', 0.1), 150);
+      setTimeout(() => tone(880, 0.3, 'square', 0.15), 300);
+    },
+  };
+})();
+
+let prevBall = null;
+let prevScores = null;
+let goalPopup = null;
+
+// 캔버스 크기 자동 조절 (모바일: 실제 픽셀 매칭 + 레티나 대응)
+function resizeCanvas() {
+  const c = document.getElementById('gameCanvas');
+  const wrap = document.getElementById('canvasWrap');
+  if (!c || !wrap) return;
+  const isMobile = 'ontouchstart' in window || navigator.maxTouchPoints;
+  let w = wrap.clientWidth, h = wrap.clientHeight;
+  if (w <= 0 || h <= 0) return;
+  if (isMobile && (w < 200 || h < 300)) { requestAnimationFrame(() => requestAnimationFrame(resizeCanvas)); return; }
+  let dpr = isMobile ? Math.min(window.devicePixelRatio || 1, 2) : 1;
+  if (isMobile) {
+    CW = w; CH = h;
+  } else {
+    CW = 360; CH = 880;
+    dpr = 1;
+  }
+  c.width = Math.round(CW * dpr);
+  c.height = Math.round(CH * dpr);
+  c.style.width = CW + 'px';
+  c.style.height = CH + 'px';
+  const ctx = c.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+window.addEventListener('resize', resizeCanvas);
+window.addEventListener('orientationchange', () => setTimeout(resizeCanvas, 300));
+if (window.ResizeObserver) {
+  const wrap = document.getElementById('canvasWrap');
+  if (wrap) new ResizeObserver(resizeCanvas).observe(wrap);
+}
+
+const COLORS = ['#f44336','#4caf50','#2196f3','#ff9800','#9c27b0','#00bcd4','#ffeb3b','#795548'];
+const COLOR_DARK = ['#c62828','#2e7d32','#1565c0','#e65100','#6a1b9a','#00838f','#f9a825','#4e342e'];
+
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  document.getElementById('connStatus').style.display = id === 'scrGame' ? 'none' : 'block';
+  if (id === 'scrGame') requestAnimationFrame(() => requestAnimationFrame(resizeCanvas));
+}
+
+function connStat(s) {
+  const el = document.getElementById('connStatus');
+  el.className = 'conn-status ' + s;
+  el.textContent = s === 'ok' ? '✅ 연결' : s === 'wait' ? '🔄 연결중' : '❌ 끊김';
+}
+
+function connect() {
+  connStat('wait');
+  try {
+    ws = new WebSocket(SVR);
+    ws.onopen = () => connStat('ok');
+    ws.onclose = () => { connStat('bad'); };
+    ws.onerror = () => { connStat('bad'); };
+    ws.onmessage = e => handle(JSON.parse(e.data));
+  } catch(e) { connStat('bad'); }
+}
+
+function handle(msg) {
+  switch (msg.type) {
+    case 'room_created':
+    case 'joined':
+      roomCode = msg.code;
+      pid = msg.playerId;
+      pidx = msg.playerIndex;
+      isHost = msg.type === 'room_created';
+      document.getElementById('roomCodeLabel').textContent = msg.code;
+      document.getElementById('gameCode').textContent = '방 ' + msg.code;
+      if (msg.players) updatePlayers(msg.players);
+      showScreen('scrLobby');
+      break;
+    case 'player_list':
+      updatePlayers(msg.players);
+      break;
+    case 'error':
+      alert(msg.message);
+      break;
+    case 'game_started':
+      gs = msg.state;
+      playerMap = msg.playerMap || {};
+      prevBall = null;
+      prevScores = null;
+      document.getElementById('gameOverlay').classList.remove('show');
+      showScreen('scrGame');
+      SFX.start();
+      startLoop();
+      break;
+    case 'game_update':
+      gs = msg.state;
+      break;
+    case 'player_eliminated':
+      if (gs) { gs.scores = msg.scores; gs.eliminated = msg.eliminated; }
+      goalPopup = { text: `P${msg.playerIndex+1} ❌ 탈락!`, timer: 120, duration: 120 };
+      break;
+    case 'game_over':
+      if (gs) { gs.scores = msg.scores; gs.eliminated = msg.eliminated; }
+      if (anim) { cancelAnimationFrame(anim); anim = null; }
+      showGameOver(msg.scores, msg.eliminated);
+      break;
+    case 'player_left':
+      break;
+  }
+}
+
+function send(data) {
+  if (ws && ws.readyState === 1) ws.send(JSON.stringify(data));
+}
+
+function createRoom() {
+  send({ type: 'create_room', nickname: document.getElementById('nickC').value.trim() || '방장' });
+}
+function joinRoom() {
+  const c = document.getElementById('codeInput').value.trim();
+  if (c.length !== 2) { alert('2자리 코드를 입력하세요.'); return; }
+  send({ type: 'join_room', code: c, nickname: document.getElementById('nickJ').value.trim() || '플레이어' });
+}
+function startGame() { send({ type: 'start_game' }); }
+
+function leaveRoom() {
+  if (anim) { cancelAnimationFrame(anim); anim = null; }
+  roomCode = null; pid = null; pidx = -1; isHost = false; gs = null; playerMap = {};
+  document.getElementById('gameOverlay').classList.remove('show');
+  showScreen('scrMenu');
+}
+
+function updatePlayers(players) {
+  const c = document.getElementById('playerList');
+  c.innerHTML = '';
+  document.getElementById('playerCount').textContent = players.length + '/8';
+  players.sort((a,b) => a.index - b.index);
+  for (const p of players) {
+    const d = document.createElement('div');
+    d.className = 'player-item';
+    d.innerHTML = `<span class="idx" style="background:${COLORS[p.index%8]}">${p.index+1}</span>` +
+      `<span>${p.nickname}${p.isHost?' <span class=crown>👑</span>':''}</span>`;
+    c.appendChild(d);
+  }
+  const sb = document.getElementById('startBtn');
+  if (sb) { sb.style.display = isHost ? '' : 'none'; sb.disabled = players.length < 1; }
+}
+
+function showGameOver(scores, eliminated) {
+  const entries = scores.map((s, i) => ({ index: i, score: s, eliminated: eliminated[i] }));
+  entries.sort((a, b) => a.score - b.score);
+  let rank = 1;
+  let html = '<div style="text-align:left;max-width:300px;margin:0 auto">';
+  for (let i = 0; i < entries.length; i++) {
+    const e = entries[i];
+    const emoji = e.eliminated ? '❌' : '👑';
+    const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : '';
+    html += `<div style="padding:4px 8px;font-size:0.95em">${medal} ${emoji} P${e.index+1} — ${e.score}점</div>`;
+  }
+  html += '</div>';
+  document.getElementById('resultTitle').textContent = '🏆 게임 종료';
+  document.getElementById('resultDetail').innerHTML = html;
+  document.getElementById('gameOverlay').classList.add('show');
+}
+
+// ============ 게임 렌더링 ============
+const TABLE_PAD_DESKTOP = 30;
+const TABLE_PAD_MOBILE = 20;
+let scale = 1, ox = 0, oy = 0;
+
+function calcTransform() {
+  if (!gs) return;
+  const isMobile = 'ontouchstart' in window || navigator.maxTouchPoints;
+  const pad = isMobile ? TABLE_PAD_MOBILE : TABLE_PAD_DESKTOP;
+  const tw = gs.tableW || 360, th = gs.tableH || 880;
+  const rotated = isMobile && window.innerHeight > window.innerWidth && tw > th;
+  if (rotated) {
+    const sx = (CW - pad*2) / th;
+    const sy = (CH - pad*2) / tw;
+    scale = Math.min(sx, sy);
+    ox = (CW - th * scale) / 2;
+    oy = (CH - tw * scale) / 2;
+  } else {
+    const sx = (CW - pad*2) / tw;
+    const sy = (CH - pad*2) / th;
+    scale = Math.min(sx, sy);
+    ox = (CW - tw * scale) / 2;
+    oy = (CH - th * scale) / 2;
+  }
+}
+
+function toScreen(wx, wy) {
+  return { x: ox + wx * scale, y: oy + wy * scale };
+}
+
+function toWorld(sx, sy) {
+  const tw = gs?.tableW || 360, th = gs?.tableH || 880;
+  const rotated = ('ontouchstart' in window || navigator.maxTouchPoints) && window.innerHeight > window.innerWidth && tw > th;
+  if (rotated) {
+    const lx = sy;
+    const ly = CW - sx;
+    return { x: (lx - ox) / scale, y: (ly - oy) / scale };
+  }
+  return { x: (sx - ox) / scale, y: (sy - oy) / scale };
+}
+
+function detectEvents() {
+  if (!gs || !gs.ball) { prevBall = null; prevScores = null; return; }
+  const ball = gs.ball;
+  if (prevBall) {
+    const nearWall = ball.x - ball.radius - 3 < 0 || ball.x + ball.radius + 3 > gs.tableW ||
+                     ball.y - ball.radius - 3 < 0 || ball.y + ball.radius + 3 > gs.tableH;
+    const wasNearWall = prevBall.x - ball.radius - 3 < 0 || prevBall.x + ball.radius + 3 > gs.tableW ||
+                        prevBall.y - ball.radius - 3 < 0 || prevBall.y + ball.radius + 3 > gs.tableH;
+    if (nearWall && !wasNearWall) SFX.wall();
+
+    for (const b of (gs.bumpers || [])) {
+      const d = Math.hypot(ball.x - b.x, ball.y - b.y);
+      const pd = Math.hypot(prevBall.x - b.x, prevBall.y - b.y);
+      if (d < ball.radius + b.radius + 5 && pd >= ball.radius + b.radius) { SFX.bumper(); break; }
+    }
+
+    for (const p of (gs.players || [])) {
+      const d = Math.hypot(ball.x - p.x, ball.y - p.y);
+      const pd = Math.hypot(prevBall.x - p.x, prevBall.y - p.y);
+      if (d < ball.radius + p.radius + 2 && pd >= ball.radius + p.radius) { SFX.kick(); break; }
+    }
+
+    if (prevScores && gs.scores) {
+      for (let i = 0; i < gs.scores.length; i++) {
+        if (gs.scores[i] !== prevScores[i]) { SFX.goal(); goalPopup = { text: `P${i+1} 실점! (${gs.scores[i]})`, timer: 90, duration: 90 }; break; }
+      }
+    }
+  }
+  prevBall = { x: ball.x, y: ball.y, vx: ball.vx, vy: ball.vy };
+  prevScores = gs.scores ? [...gs.scores] : null;
+}
+
+function startLoop() {
+  const loop = () => {
+    if (gs) { detectEvents(); render(); sendInput(); }
+    anim = requestAnimationFrame(loop);
+  };
+  loop();
+}
+
+function sendInput() {
+  if (!gs) return;
+  const w = toWorld(mx, my);
+  send({ type: 'player_input', input: { tx: w.x, ty: w.y, dash: dashPressed } });
+  dashPressed = false;
+}
+
+function render() {
+  if (!gs) return;
+  calcTransform();
+
+  const tw = gs.tableW || 360, th = gs.tableH || 880;
+  const gk = gs.players || [];
+  const ball = gs.ball;
+  const bumpers = gs.bumpers || [];
+  const scores = gs.scores || [];
+  const goals = gs.goalPositions || [];
+  const gW = gs.goalWidth || 52;
+
+  ctx.clearRect(0, 0, CW, CH);
+
+  const _rotated = ('ontouchstart' in window || navigator.maxTouchPoints) && window.innerHeight > window.innerWidth && tw > th;
+  if (_rotated) {
+    ctx.save();
+    ctx.translate(CW / 2, CH / 2);
+    ctx.rotate(Math.PI / 2);
+    ctx.translate(-CH / 2, -CW / 2);
+  }
+
+  // 배경
+  ctx.fillStyle = '#0a0a1a';
+  ctx.fillRect(0, 0, CW, CH);
+
+  // 테이블 바깥 그림자
+  ctx.save();
+  ctx.shadowColor = 'rgba(0,150,255,0.08)';
+  ctx.shadowBlur = 40;
+  ctx.fillStyle = '#111d2b';
+  roundRect(ctx, ox - 4, oy - 4, tw * scale + 8, th * scale + 8, 8);
+  ctx.fill();
+  ctx.restore();
+
+  // 테이블 배경
+  ctx.fillStyle = '#142830';
+  roundRect(ctx, ox, oy, tw * scale, th * scale, 6);
+  ctx.fill();
+
+  // 잔디 필드
+  ctx.save();
+  const margin = 20 * scale;
+  ctx.beginPath();
+  roundRect(ctx, ox + margin, oy + margin, tw * scale - margin*2, th * scale - margin*2, 4);
+  ctx.clip();
+
+  const gfx = ox + margin, gfy = oy + margin, gfW = tw * scale - margin*2, gfH = th * scale - margin*2;
+  const grad = ctx.createRadialGradient(gfx + gfW/2, gfy + gfH/2, 0, gfx + gfW/2, gfy + gfH/2, gfW/2);
+  grad.addColorStop(0, '#1b6b2a');
+  grad.addColorStop(0.6, '#155d23');
+  grad.addColorStop(1, '#0e4a1a');
+  ctx.fillStyle = grad;
+  ctx.fillRect(gfx, gfy, gfW, gfH);
+
+  // 필드 라인
+  ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([6, 6]);
+  ctx.beginPath();
+  ctx.moveTo(gfx + gfW/2, gfy);
+  ctx.lineTo(gfx + gfW/2, gfy + gfH);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // 센터 서클
+  ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(gfx + gfW/2, gfy + gfH/2, gfW * 0.12, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+
+  // 벽
+  const wallC = '#2a4a5a';
+  ctx.fillStyle = wallC;
+  ctx.strokeStyle = '#3a6a7a';
+  ctx.lineWidth = 2;
+
+  // 상단 벽
+  ctx.fillRect(ox, oy, tw * scale, 20 * scale);
+  // 하단 벽
+  ctx.fillRect(ox, oy + (th - 20) * scale, tw * scale, 20 * scale);
+  // 좌측 벽
+  ctx.fillRect(ox, oy, 20 * scale, th * scale);
+  // 우측 벽
+  ctx.fillRect(ox + (tw - 20) * scale, oy, 20 * scale, th * scale);
+
+  // 벽 라인
+  ctx.strokeRect(ox, oy, tw * scale, th * scale);
+
+  // 벽 내부 라인
+  ctx.strokeStyle = 'rgba(100,200,255,0.1)';
+  ctx.lineWidth = 1;
+  const iw = 20 * scale, iwx = ox + iw, iwy = oy + iw, iww = tw * scale - iw*2, iwh = th * scale - iw*2;
+  ctx.strokeRect(iwx, iwy, iww, iwh);
+
+  // === 골대 (미니 출구 스타일) ===
+  for (let i = 0; i < goals.length; i++) {
+    const g = goals[i];
+    const color = COLORS[i % 8];
+    const dark = COLOR_DARK[i % 8];
+
+    let gx, gy, gw, gh;
+    switch (g.wall) {
+      case 'top':
+        gx = ox + (g.pos - gW/2) * scale; gy = oy;
+        gw = gW * scale; gh = 20 * scale;
+        break;
+      case 'bottom':
+        gx = ox + (g.pos - gW/2) * scale; gy = oy + (th - 20) * scale;
+        gw = gW * scale; gh = 20 * scale;
+        break;
+      case 'left':
+        gx = ox; gy = oy + (g.pos - gW/2) * scale;
+        gw = 20 * scale; gh = gW * scale;
+        break;
+      case 'right':
+        gx = ox + (tw - 20) * scale; gy = oy + (g.pos - gW/2) * scale;
+        gw = 20 * scale; gh = gW * scale;
+        break;
+    }
+
+    // 골대 영강 (어두운 구멍)
+    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+    ctx.fillRect(gx, gy, gw, gh);
+
+    // 골대 테두리 (네온)
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 3;
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 10;
+    ctx.strokeRect(gx + 2, gy + 2, gw - 4, gh - 4);
+    ctx.shadowBlur = 0;
+
+    // 번쩍이는 내부 효과
+    if (Math.random() > 0.97) {
+      ctx.fillStyle = `rgba(255,255,255,0.1)`;
+      ctx.fillRect(gx + 4, gy + 4, gw - 8, gh - 8);
+    }
+
+    // 선수 번호
+    ctx.fillStyle = color;
+    ctx.font = `bold ${11*scale/1.2}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const tx = gx + gw/2, ty = gy + gh/2;
+    ctx.fillText(`P${i+1}`, tx, ty);
+  }
+
+  // === 범퍼 ===
+  for (const b of bumpers) {
+    const s = toScreen(b.x, b.y);
+    const r = b.radius * scale;
+
+    // 글로우
+    ctx.shadowColor = '#ff6f00';
+    ctx.shadowBlur = 15;
+
+    const grd = ctx.createRadialGradient(s.x - r*0.3, s.y - r*0.3, 0, s.x, s.y, r);
+    grd.addColorStop(0, '#ffab00');
+    grd.addColorStop(0.5, '#e65100');
+    grd.addColorStop(1, '#bf360c');
+    ctx.fillStyle = grd;
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, r, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = '#ffd54f';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // 별표시
+    ctx.fillStyle = 'rgba(255,255,255,0.6)';
+    ctx.font = `${12*scale/1.2}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('★', s.x, s.y + 1);
+  }
+
+  // === 골키퍼 ===
+  const elim = gs.eliminated || [];
+  for (let i = 0; i < gk.length; i++) {
+    if (elim[i]) continue;
+    const k = gk[i];
+    const col = COLORS[i % 8];
+    const dk = COLOR_DARK[i % 8];
+    const s = toScreen(k.x, k.y);
+    const r = k.radius * scale;
+    const isMe = i === pidx;
+    const springing = k.springActive;
+
+    // 그림자
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.beginPath();
+    ctx.arc(s.x + 2, s.y + 2, r, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 몸체
+    if (isMe) {
+      ctx.shadowColor = '#ffd700';
+      ctx.shadowBlur = 20;
+    }
+    const grd = ctx.createRadialGradient(s.x - r*0.3, s.y - r*0.3, 0, s.x, s.y, r);
+    grd.addColorStop(0, springing ? '#fff' : col);
+    grd.addColorStop(1, dk);
+    ctx.fillStyle = grd;
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // 테두리
+    ctx.strokeStyle = isMe ? '#ffd700' : '#fff';
+    ctx.lineWidth = isMe ? 3 : 1.5;
+    if (isMe) {
+      ctx.setLineDash([5, 4]);
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // 번호
+    ctx.fillStyle = '#fff';
+    ctx.font = `bold ${10*scale/1.2}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(i + 1, s.x, s.y);
+
+    // 내 골키퍼 표시 (이름)
+    if (isMe) {
+      ctx.fillStyle = '#ffd700';
+      ctx.font = `bold ${9*scale/1.2}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'bottom';
+      ctx.fillText('★ ME', s.x, s.y - r - 6);
+    }
+  }
+
+  // === 공 (축구공) ===
+  if (ball) {
+    const s = toScreen(ball.x, ball.y);
+    const r = ball.radius * scale;
+
+    // 잔상
+    const spd = Math.sqrt(ball.vx * ball.vx + ball.vy * ball.vy);
+    if (spd > 1.5) {
+      ctx.strokeStyle = `rgba(255,255,255,${Math.min(0.25, spd * 0.02)})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(s.x, s.y);
+      ctx.lineTo(s.x - ball.vx * 4 * scale, s.y - ball.vy * 4 * scale);
+      ctx.stroke();
+    }
+
+    // 글로우
+    ctx.shadowColor = '#fff';
+    ctx.shadowBlur = 15;
+
+    // 축구공
+    const grd = ctx.createRadialGradient(s.x - r*0.3, s.y - r*0.3, 0, s.x, s.y, r);
+    grd.addColorStop(0, '#ffffff');
+    grd.addColorStop(0.6, '#e0e0e0');
+    grd.addColorStop(1, '#9e9e9e');
+    ctx.fillStyle = grd;
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    ctx.strokeStyle = '#555';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // 오각형 무늬
+    const pentR = r * 0.4;
+    for (let p = 0; p < 5; p++) {
+      const pa = (p / 5) * Math.PI * 2 - Math.PI / 2;
+      const px = s.x + Math.cos(pa) * pentR;
+      const py = s.y + Math.sin(pa) * pentR;
+      ctx.fillStyle = '#333';
+      ctx.beginPath();
+      for (let pp = 0; pp < 5; pp++) {
+        const ppa = (pp / 5) * Math.PI * 2 - Math.PI / 2;
+        const ppx = px + Math.cos(ppa) * (r * 0.16);
+        const ppy = py + Math.sin(ppa) * (r * 0.16);
+        pp === 0 ? ctx.moveTo(ppx, ppy) : ctx.lineTo(ppx, ppy);
+      }
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+
+  // === 점수 표시 ===
+  const sb = document.getElementById('scoreBar');
+  if (sb) {
+    const elim = gs.eliminated || [];
+    sb.innerHTML = scores.map((s, i) =>
+      `<span style="background:${COLORS[i%8]};color:#fff;${elim[i]?'opacity:0.4;text-decoration:line-through':''}">P${i+1}:${s||0}${elim[i]?' ❌':''}</span>`
+    ).join('');
+  }
+
+  // === 골 팝업 (회전 복원 후 실제 좌표) ===
+  if (_rotated) ctx.restore();
+
+  if (goalPopup && goalPopup.timer > 0) {
+    const a = Math.min(1, goalPopup.timer / 30);
+    const s = 1 + (1 - goalPopup.timer / goalPopup.duration) * 0.4;
+    ctx.save();
+    ctx.globalAlpha = a;
+    ctx.font = `bold ${Math.round(56 * s)}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.shadowColor = '#ff0000';
+    ctx.shadowBlur = 40;
+    ctx.fillStyle = '#ff4444';
+    ctx.fillText(goalPopup.text, CW / 2, CH / 2 - 30);
+    ctx.restore();
+    goalPopup.timer--;
+  }
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+// === 입력 (CSS 좌표계 사용) ===
+function getCanvasPos(e) {
+  const r = canvas.getBoundingClientRect();
+  return {
+    x: (e.clientX - r.left) * (CW / r.width),
+    y: (e.clientY - r.top) * (CH / r.height)
+  };
+}
+canvas.addEventListener('mousemove', e => {
+  const p = getCanvasPos(e); mx = p.x; my = p.y;
+});
+canvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  const p = getCanvasPos(e.touches[0]); mx = p.x; my = p.y;
+}, { passive: false });
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  const p = getCanvasPos(e.touches[0]); mx = p.x; my = p.y;
+}, { passive: false });
+
+// === 대시 ===
+let dashHold = false;
+canvas.addEventListener('mousedown', e => {
+  if (e.button === 0 && gs) { dashPressed = true; dashHold = true; }
+});
+canvas.addEventListener('mouseup', e => {
+  if (e.button === 0) dashHold = false;
+});
+const dashBtn = document.getElementById('dashBtn');
+if (dashBtn) {
+  dashBtn.addEventListener('touchstart', e => { e.preventDefault(); dashPressed = true; }, { passive: false });
+}
+
+connect();
+</script>
+</body>
+</html>

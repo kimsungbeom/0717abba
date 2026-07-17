@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: pinball-soccer
+    env: node
+    buildCommand: cd server && npm install
+    startCommand: node server/server.js
+    plan: free
