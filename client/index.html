@@ -9,8 +9,8 @@
 html,body{width:100%;height:100%;margin:0;padding:0;overflow:hidden}
 body{background:#0a0a1a;color:#fff;font-family:'Segoe UI',sans-serif;display:flex;justify-content:center;align-items:center;touch-action:none;user-select:none}
 #app{position:relative;width:100%;height:100%;background:#0d1520;overflow:hidden}
-.screen{position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;padding:30px}
-.screen.active{display:flex}
+.screen{position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;padding:30px;opacity:0;transition:opacity .3s ease,transform .3s ease;transform:translateY(12px)}
+.screen.active{display:flex;opacity:1;transform:translateY(0)}
 h1{font-size:2.2em;margin-bottom:6px;background:linear-gradient(135deg,#4fc3f7,#00e676);-webkit-background-clip:text;-webkit-text-fill-color:transparent;text-shadow:none}
 .sub{color:#667;font-size:0.9em;margin-bottom:28px}
 .btn{padding:14px 40px;border:none;border-radius:10px;font-size:1.05em;cursor:pointer;transition:all .2s;font-weight:bold;width:240px;margin:6px 0;letter-spacing:1px}
@@ -149,6 +149,11 @@ let anim = null;
 let mx = CW/2, my = CH/2;
 let playerMap = {};
 let dashPressed = false;
+let particles = [];
+let ballTrail = [];
+let ballAngle = 0;
+let bumperHitTimers = {};
+let dashEffects = [];
 
 // === 효과음 (Web Audio API) ===
 const SFX = (() => {
@@ -291,6 +296,7 @@ function handle(msg) {
       playerMap = msg.playerMap || {};
       prevBall = null;
       prevScores = null;
+      particles = []; ballTrail = []; bumperHitTimers = {};
       document.getElementById('gameOverlay').classList.remove('show');
       showScreen('scrGame');
       SFX.start();
@@ -330,6 +336,7 @@ function startGame() { send({ type: 'start_game' }); }
 function leaveRoom() {
   if (anim) { cancelAnimationFrame(anim); anim = null; }
   roomCode = null; pid = null; pidx = -1; isHost = false; gs = null; playerMap = {};
+  particles = []; ballTrail = []; bumperHitTimers = {};
   document.getElementById('gameOverlay').classList.remove('show');
   showScreen('scrMenu');
 }
@@ -411,28 +418,59 @@ function toWorld(sx, sy) {
 function detectEvents() {
   if (!gs || !gs.ball) { prevBall = null; prevScores = null; return; }
   const ball = gs.ball;
+  const spd = Math.sqrt(ball.vx * ball.vx + ball.vy * ball.vy);
+
+  // 볼 트레일
+  const s = toScreen(ball.x, ball.y);
+  if (spd > 1) {
+    ballTrail.push({ x: s.x, y: s.y, life: 20, maxLife: 20 });
+    if (ballTrail.length > 15) ballTrail.shift();
+  }
+
   if (prevBall) {
     const nearWall = ball.x - ball.radius - 3 < 0 || ball.x + ball.radius + 3 > gs.tableW ||
                      ball.y - ball.radius - 3 < 0 || ball.y + ball.radius + 3 > gs.tableH;
     const wasNearWall = prevBall.x - ball.radius - 3 < 0 || prevBall.x + ball.radius + 3 > gs.tableW ||
                         prevBall.y - ball.radius - 3 < 0 || prevBall.y + ball.radius + 3 > gs.tableH;
-    if (nearWall && !wasNearWall) SFX.wall();
+    if (nearWall && !wasNearWall) {
+      SFX.wall();
+      const sw = toScreen(ball.x, ball.y);
+      spawnParticles(sw.x, sw.y, 5, '#4fc3f7', 2, 1.5);
+    }
 
-    for (const b of (gs.bumpers || [])) {
+    for (let bi = 0; bi < (gs.bumpers || []).length; bi++) {
+      const b = gs.bumpers[bi];
       const d = Math.hypot(ball.x - b.x, ball.y - b.y);
       const pd = Math.hypot(prevBall.x - b.x, prevBall.y - b.y);
-      if (d < ball.radius + b.radius + 5 && pd >= ball.radius + b.radius) { SFX.bumper(); break; }
+      if (d < ball.radius + b.radius + 5 && pd >= ball.radius + b.radius) {
+        SFX.bumper();
+        const sb = toScreen(b.x, b.y);
+        spawnParticles(sb.x, sb.y, 8, '#ffab00', 3, 2);
+        bumperHitTimers[bi] = 8;
+      }
     }
 
     for (const p of (gs.players || [])) {
       const d = Math.hypot(ball.x - p.x, ball.y - p.y);
       const pd = Math.hypot(prevBall.x - p.x, prevBall.y - p.y);
-      if (d < ball.radius + p.radius + 2 && pd >= ball.radius + p.radius) { SFX.kick(); break; }
+      if (d < ball.radius + p.radius + 2 && pd >= ball.radius + p.radius) {
+        SFX.kick();
+        const sp = toScreen(p.x, p.y);
+        spawnParticles(sp.x, sp.y, 6, '#fff', 2.5, 1.5);
+      }
     }
 
     if (prevScores && gs.scores) {
       for (let i = 0; i < gs.scores.length; i++) {
-        if (gs.scores[i] !== prevScores[i]) { SFX.goal(); goalPopup = { text: `P${i+1} 실점! (${gs.scores[i]})`, timer: 90, duration: 90 }; break; }
+        if (gs.scores[i] !== prevScores[i]) {
+          SFX.goal();
+          goalPopup = { text: `P${i+1} 실점! (${gs.scores[i]})`, timer: 90, duration: 90 };
+          const sg = toScreen(ball.x, ball.y);
+          for (let g = 0; g < 20; g++) {
+            spawnParticles(sg.x + (Math.random() - 0.5) * 40, sg.y + (Math.random() - 0.5) * 40, 3, COLORS[i % 8], 5, 2.5);
+          }
+          break;
+        }
       }
     }
   }
@@ -442,7 +480,7 @@ function detectEvents() {
 
 function startLoop() {
   const loop = () => {
-    if (gs) { detectEvents(); render(); sendInput(); }
+    if (gs) { calcTransform(); detectEvents(); updateParticles(); render(); sendInput(); }
     anim = requestAnimationFrame(loop);
   };
   loop();
@@ -453,6 +491,42 @@ function sendInput() {
   const w = toWorld(mx, my);
   send({ type: 'player_input', input: { tx: w.x, ty: w.y, dash: dashPressed } });
   dashPressed = false;
+}
+
+function spawnParticles(x, y, count, color, speed, size) {
+  for (let i = 0; i < count; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const sp = (0.5 + Math.random()) * speed;
+    particles.push({
+      x, y,
+      vx: Math.cos(a) * sp,
+      vy: Math.sin(a) * sp,
+      life: 20 + Math.random() * 20,
+      maxLife: 40,
+      color: color || '#ffd700',
+      size: (1 + Math.random() * 2) * (size || 1),
+    });
+  }
+}
+
+function updateParticles() {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vx *= 0.95;
+    p.vy *= 0.95;
+    p.life--;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+  for (let i = ballTrail.length - 1; i >= 0; i--) {
+    ballTrail[i].life--;
+    if (ballTrail[i].life <= 0) ballTrail.splice(i, 1);
+  }
+  for (const k in bumperHitTimers) {
+    bumperHitTimers[k]--;
+    if (bumperHitTimers[k] <= 0) delete bumperHitTimers[k];
+  }
 }
 
 function render() {
@@ -466,6 +540,7 @@ function render() {
   const scores = gs.scores || [];
   const goals = gs.goalPositions || [];
   const gW = gs.goalWidth || 52;
+  const now = Date.now();
 
   ctx.clearRect(0, 0, CW, CH);
 
@@ -529,21 +604,13 @@ function render() {
   ctx.restore();
 
   // 벽
-  const wallC = '#2a4a5a';
-  ctx.fillStyle = wallC;
+  ctx.fillStyle = '#2a4a5a';
   ctx.strokeStyle = '#3a6a7a';
   ctx.lineWidth = 2;
-
-  // 상단 벽
   ctx.fillRect(ox, oy, tw * scale, 20 * scale);
-  // 하단 벽
   ctx.fillRect(ox, oy + (th - 20) * scale, tw * scale, 20 * scale);
-  // 좌측 벽
   ctx.fillRect(ox, oy, 20 * scale, th * scale);
-  // 우측 벽
   ctx.fillRect(ox + (tw - 20) * scale, oy, 20 * scale, th * scale);
-
-  // 벽 라인
   ctx.strokeRect(ox, oy, tw * scale, th * scale);
 
   // 벽 내부 라인
@@ -552,12 +619,10 @@ function render() {
   const iw = 20 * scale, iwx = ox + iw, iwy = oy + iw, iww = tw * scale - iw*2, iwh = th * scale - iw*2;
   ctx.strokeRect(iwx, iwy, iww, iwh);
 
-  // === 골대 (미니 출구 스타일) ===
+  // === 골대 ===
   for (let i = 0; i < goals.length; i++) {
     const g = goals[i];
     const color = COLORS[i % 8];
-    const dark = COLOR_DARK[i % 8];
-
     let gx, gy, gw, gh;
     switch (g.wall) {
       case 'top':
@@ -578,39 +643,50 @@ function render() {
         break;
     }
 
-    // 골대 영강 (어두운 구멍)
+    // 골대 내부 (어두운 구멍)
     ctx.fillStyle = 'rgba(0,0,0,0.7)';
     ctx.fillRect(gx, gy, gw, gh);
 
-    // 골대 테두리 (네온)
+    // 그물망 패턴
+    ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+    ctx.lineWidth = 0.5;
+    const netStep = 6 * scale;
+    for (let nx = gx; nx < gx + gw; nx += netStep) {
+      ctx.beginPath(); ctx.moveTo(nx, gy); ctx.lineTo(nx, gy + gh); ctx.stroke();
+    }
+    for (let ny = gy; ny < gy + gh; ny += netStep) {
+      ctx.beginPath(); ctx.moveTo(gx, ny); ctx.lineTo(gx + gw, ny); ctx.stroke();
+    }
+
+    // 골대 테두리 (정현파 네온 펄스)
+    const pulse = 0.6 + 0.4 * Math.sin(now * 0.004 + i * 1.5);
     ctx.strokeStyle = color;
     ctx.lineWidth = 3;
     ctx.shadowColor = color;
-    ctx.shadowBlur = 10;
+    ctx.shadowBlur = 6 + 8 * pulse;
     ctx.strokeRect(gx + 2, gy + 2, gw - 4, gh - 4);
     ctx.shadowBlur = 0;
 
-    // 번쩍이는 내부 효과
-    if (Math.random() > 0.97) {
-      ctx.fillStyle = `rgba(255,255,255,0.1)`;
-      ctx.fillRect(gx + 4, gy + 4, gw - 8, gh - 8);
-    }
+    // 내부 글로우 (정현파)
+    ctx.fillStyle = `rgba(255,255,255,${0.04 * pulse})`;
+    ctx.fillRect(gx + 4, gy + 4, gw - 8, gh - 8);
 
     // 선수 번호
     ctx.fillStyle = color;
     ctx.font = `bold ${11*scale/1.2}px sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    const tx = gx + gw/2, ty = gy + gh/2;
-    ctx.fillText(`P${i+1}`, tx, ty);
+    ctx.fillText(`P${i+1}`, gx + gw/2, gy + gh/2);
   }
 
   // === 범퍼 ===
-  for (const b of bumpers) {
+  for (let bi = 0; bi < bumpers.length; bi++) {
+    const b = bumpers[bi];
     const s = toScreen(b.x, b.y);
-    const r = b.radius * scale;
+    const hitTimer = bumperHitTimers[bi] || 0;
+    const hitScale = hitTimer > 0 ? 1 + 0.3 * (hitTimer / 8) : 1;
+    const r = b.radius * scale * hitScale;
 
-    // 글로우
     ctx.shadowColor = '#ff6f00';
     ctx.shadowBlur = 15;
 
@@ -622,13 +698,12 @@ function render() {
     ctx.beginPath();
     ctx.arc(s.x, s.y, r, 0, Math.PI * 2);
     ctx.fill();
-
     ctx.shadowBlur = 0;
+
     ctx.strokeStyle = '#ffd54f';
     ctx.lineWidth = 2;
     ctx.stroke();
 
-    // 별표시
     ctx.fillStyle = 'rgba(255,255,255,0.6)';
     ctx.font = `${12*scale/1.2}px sans-serif`;
     ctx.textAlign = 'center';
@@ -636,71 +711,21 @@ function render() {
     ctx.fillText('★', s.x, s.y + 1);
   }
 
-  // === 골키퍼 ===
-  const elim = gs.eliminated || [];
-  for (let i = 0; i < gk.length; i++) {
-    if (elim[i]) continue;
-    const k = gk[i];
-    const col = COLORS[i % 8];
-    const dk = COLOR_DARK[i % 8];
-    const s = toScreen(k.x, k.y);
-    const r = k.radius * scale;
-    const isMe = i === pidx;
-    const springing = k.springActive;
-
-    // 그림자
-    ctx.fillStyle = 'rgba(0,0,0,0.3)';
-    ctx.beginPath();
-    ctx.arc(s.x + 2, s.y + 2, r, 0, Math.PI * 2);
-    ctx.fill();
-
-    // 몸체
-    if (isMe) {
-      ctx.shadowColor = '#ffd700';
-      ctx.shadowBlur = 20;
-    }
-    const grd = ctx.createRadialGradient(s.x - r*0.3, s.y - r*0.3, 0, s.x, s.y, r);
-    grd.addColorStop(0, springing ? '#fff' : col);
-    grd.addColorStop(1, dk);
-    ctx.fillStyle = grd;
-    ctx.beginPath();
-    ctx.arc(s.x, s.y, r, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.shadowBlur = 0;
-
-    // 테두리
-    ctx.strokeStyle = isMe ? '#ffd700' : '#fff';
-    ctx.lineWidth = isMe ? 3 : 1.5;
-    if (isMe) {
-      ctx.setLineDash([5, 4]);
-    }
-    ctx.stroke();
-    ctx.setLineDash([]);
-
-    // 번호
-    ctx.fillStyle = '#fff';
-    ctx.font = `bold ${10*scale/1.2}px sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(i + 1, s.x, s.y);
-
-    // 내 골키퍼 표시 (이름)
-    if (isMe) {
-      ctx.fillStyle = '#ffd700';
-      ctx.font = `bold ${9*scale/1.2}px sans-serif`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'bottom';
-      ctx.fillText('★ ME', s.x, s.y - r - 6);
-    }
-  }
-
-  // === 공 (축구공) ===
+  // === 공 멀티 트레일 ===
   if (ball) {
     const s = toScreen(ball.x, ball.y);
-    const r = ball.radius * scale;
-
-    // 잔상
     const spd = Math.sqrt(ball.vx * ball.vx + ball.vy * ball.vy);
+    for (const t of ballTrail) {
+      const ta = t.life / t.maxLife;
+      ctx.globalAlpha = ta * 0.08;
+      ctx.fillStyle = '#fff';
+      ctx.beginPath();
+      ctx.arc(t.x, t.y, ball.radius * scale * ta * 0.6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    // 잔상 (단일)
     if (spd > 1.5) {
       ctx.strokeStyle = `rgba(255,255,255,${Math.min(0.25, spd * 0.02)})`;
       ctx.lineWidth = 2;
@@ -715,6 +740,7 @@ function render() {
     ctx.shadowBlur = 15;
 
     // 축구공
+    const r = ball.radius * scale;
     const grd = ctx.createRadialGradient(s.x - r*0.3, s.y - r*0.3, 0, s.x, s.y, r);
     grd.addColorStop(0, '#ffffff');
     grd.addColorStop(0.6, '#e0e0e0');
@@ -729,16 +755,17 @@ function render() {
     ctx.lineWidth = 1.5;
     ctx.stroke();
 
-    // 오각형 무늬
+    // 회전하는 오각형 무늬
+    ballAngle += spd * 0.02;
     const pentR = r * 0.4;
     for (let p = 0; p < 5; p++) {
-      const pa = (p / 5) * Math.PI * 2 - Math.PI / 2;
+      const pa = (p / 5) * Math.PI * 2 + ballAngle;
       const px = s.x + Math.cos(pa) * pentR;
       const py = s.y + Math.sin(pa) * pentR;
       ctx.fillStyle = '#333';
       ctx.beginPath();
       for (let pp = 0; pp < 5; pp++) {
-        const ppa = (pp / 5) * Math.PI * 2 - Math.PI / 2;
+        const ppa = (pp / 5) * Math.PI * 2 + ballAngle;
         const ppx = px + Math.cos(ppa) * (r * 0.16);
         const ppy = py + Math.sin(ppa) * (r * 0.16);
         pp === 0 ? ctx.moveTo(ppx, ppy) : ctx.lineTo(ppx, ppy);
@@ -747,6 +774,87 @@ function render() {
       ctx.fill();
     }
   }
+
+  // === 골키퍼 ===
+  const elim = gs.eliminated || [];
+  for (let i = 0; i < gk.length; i++) {
+    if (elim[i]) continue;
+    const k = gk[i];
+    const col = COLORS[i % 8];
+    const dk = COLOR_DARK[i % 8];
+    const s = toScreen(k.x, k.y);
+    const r = k.radius * scale;
+    const isMe = i === pidx;
+    const springing = k.springActive;
+    const dashing = k.dashTimer > 0;
+
+    // 대시 속도선
+    if (dashing) {
+      for (let d = 0; d < 6; d++) {
+        const da = Math.random() * Math.PI * 2;
+        const dl = 15 + Math.random() * 25;
+        ctx.strokeStyle = `rgba(255,215,0,${0.2 + Math.random() * 0.3})`;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(s.x, s.y);
+        ctx.lineTo(s.x + Math.cos(da) * dl, s.y + Math.sin(da) * dl);
+        ctx.stroke();
+      }
+      ctx.shadowColor = '#ffd700';
+      ctx.shadowBlur = 30;
+    }
+
+    // 그림자
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.beginPath();
+    ctx.arc(s.x + 2, s.y + 2, r, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 몸체
+    if (isMe && !dashing) {
+      ctx.shadowColor = '#ffd700';
+      ctx.shadowBlur = 20;
+    }
+    const grd = ctx.createRadialGradient(s.x - r*0.3, s.y - r*0.3, 0, s.x, s.y, r);
+    grd.addColorStop(0, springing ? '#fff' : col);
+    grd.addColorStop(1, dk);
+    ctx.fillStyle = grd;
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    ctx.strokeStyle = isMe ? '#ffd700' : '#fff';
+    ctx.lineWidth = isMe ? 3 : 1.5;
+    if (isMe) ctx.setLineDash([5, 4]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.fillStyle = '#fff';
+    ctx.font = `bold ${10*scale/1.2}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(i + 1, s.x, s.y);
+
+    if (isMe) {
+      ctx.fillStyle = '#ffd700';
+      ctx.font = `bold ${9*scale/1.2}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'bottom';
+      ctx.fillText('★ ME', s.x, s.y - r - 6);
+    }
+  }
+
+  // === 파티클 렌더링 ===
+  for (const p of particles) {
+    const a = p.life / p.maxLife;
+    ctx.globalAlpha = a;
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size * a, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
 
   // === 점수 표시 ===
   const sb = document.getElementById('scoreBar');
@@ -757,7 +865,7 @@ function render() {
     ).join('');
   }
 
-  // === 골 팝업 (회전 복원 후 실제 좌표) ===
+  // === 골 팝업 ===
   if (_rotated) ctx.restore();
 
   if (goalPopup && goalPopup.timer > 0) {
