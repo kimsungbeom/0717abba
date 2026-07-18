@@ -51,6 +51,7 @@ canvas{display:block;touch-action:none}
 #leaveGameBtn{flex-shrink:0}
 #dashBtn{position:absolute;bottom:max(24px, env(safe-area-inset-bottom,24px));right:max(24px, env(safe-area-inset-right,24px));width:76px;height:76px;border-radius:50%;border:3px solid rgba(255,215,0,0.5);background:rgba(255,215,0,0.12);color:#ffd700;font-size:0.65em;font-weight:bold;z-index:30;display:none;align-items:center;justify-content:center;cursor:pointer;touch-action:none;flex-direction:column;line-height:1.2;backdrop-filter:blur(4px);letter-spacing:0;text-align:center}
 #dashBtn:active{background:rgba(255,215,0,0.35);transform:scale(0.9)}
+#muteBtn{position:absolute;top:max(4px, env(safe-area-inset-top,4px));right:max(4px, env(safe-area-inset-right,4px));width:26px;height:26px;border-radius:50%;border:1px solid rgba(255,255,255,0.12);background:rgba(0,0,0,0.3);color:#888;font-size:0.6em;z-index:35;display:flex;align-items:center;justify-content:center;cursor:pointer;touch-action:none;line-height:1}
 @media(pointer:coarse){#dashBtn{display:flex}}
 @media(min-width:881px){
 #app{border-radius:16px;box-shadow:0 0 80px rgba(0,100,255,0.15);border:1px solid rgba(0,150,255,0.2);height:min(880px, 100vh);width:min(360px, 100vw)}
@@ -126,6 +127,7 @@ input.code-input{width:min(130px, 50vw);font-size:clamp(1.4em, 7vw, 1.8em);lette
       <canvas id="gameCanvas"></canvas>
     </div>
     <button id="dashBtn">⚡<br>대시</button>
+    <button id="muteBtn">🔊</button>
     <div class="game-overlay" id="gameOverlay">
       <h1 style="font-size:2em" id="resultTitle">게임 종료</h1>
       <div id="resultDetail" style="color:#aaa;margin:12px 0;font-size:1em"></div>
@@ -158,11 +160,16 @@ let dashEffects = [];
 // === 효과음 (Web Audio API) ===
 const SFX = (() => {
   let audioCtx = null;
+  let muted = false;
   function getCtx() {
     if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     return audioCtx;
   }
+  function resume() {
+    try { if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume(); } catch(e) {}
+  }
   function tone(freq, dur, type, vol) {
+    if (muted) return;
     try {
       const ctx = getCtx();
       const o = ctx.createOscillator();
@@ -176,6 +183,7 @@ const SFX = (() => {
     } catch(e) {}
   }
   function noise(dur, vol) {
+    if (muted) return;
     try {
       const ctx = getCtx();
       const len = ctx.sampleRate * dur;
@@ -191,19 +199,49 @@ const SFX = (() => {
       s.start();
     } catch(e) {}
   }
+  function freqSweep(startFreq, endFreq, dur, type, vol) {
+    if (muted) return;
+    try {
+      const ctx = getCtx();
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.type = type;
+      o.frequency.setValueAtTime(startFreq, ctx.currentTime);
+      o.frequency.linearRampToValueAtTime(endFreq, ctx.currentTime + dur);
+      g.gain.setValueAtTime(vol, ctx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur);
+      o.connect(g); g.connect(ctx.destination);
+      o.start(); o.stop(ctx.currentTime + dur);
+    } catch(e) {}
+  }
   return {
+    init() { getCtx(); resume(); },
+    toggleMute() { muted = !muted; return muted; },
+    get muted() { return muted; },
+    resume,
     bumper() { tone(880, 0.1, 'square', 0.15); tone(1320, 0.08, 'sine', 0.1); },
     wall() { tone(150, 0.12, 'triangle', 0.2); },
     kick() { tone(440, 0.08, 'square', 0.12); },
     goal() {
-      setTimeout(() => tone(523, 0.2, 'sine', 0.2), 0);
-      setTimeout(() => tone(659, 0.2, 'sine', 0.2), 150);
-      setTimeout(() => tone(784, 0.3, 'sine', 0.25), 300);
+      tone(523, 0.15, 'sine', 0.2);
+      setTimeout(() => tone(659, 0.15, 'sine', 0.2), 120);
+      setTimeout(() => tone(784, 0.2, 'sine', 0.25), 240);
+      setTimeout(() => tone(1047, 0.25, 'sine', 0.2), 360);
+      setTimeout(() => {
+        noise(0.15, 0.08);
+        tone(1200, 0.1, 'square', 0.05);
+      }, 400);
     },
+    eliminated() {
+      freqSweep(600, 100, 0.4, 'sawtooth', 0.12);
+      setTimeout(() => freqSweep(400, 60, 0.3, 'sawtooth', 0.08), 300);
+    },
+    dash() { freqSweep(200, 800, 0.15, 'sine', 0.1); noise(0.08, 0.06); },
+    click() { tone(800, 0.04, 'square', 0.05); },
     start() {
-      tone(440, 0.15, 'square', 0.1);
-      setTimeout(() => tone(660, 0.15, 'square', 0.1), 150);
-      setTimeout(() => tone(880, 0.3, 'square', 0.15), 300);
+      tone(440, 0.12, 'square', 0.1);
+      setTimeout(() => tone(660, 0.12, 'square', 0.1), 120);
+      setTimeout(() => tone(880, 0.25, 'square', 0.12), 240);
     },
   };
 })();
@@ -308,6 +346,7 @@ function handle(msg) {
     case 'player_eliminated':
       if (gs) { gs.scores = msg.scores; gs.eliminated = msg.eliminated; }
       goalPopup = { text: `P${msg.playerIndex+1} ❌ 탈락!`, timer: 120, duration: 120 };
+      SFX.eliminated();
       break;
     case 'game_over':
       if (gs) { gs.scores = msg.scores; gs.eliminated = msg.eliminated; }
@@ -620,7 +659,9 @@ function render() {
   ctx.strokeRect(iwx, iwy, iww, iwh);
 
   // === 골대 ===
+  const elim = gs.eliminated || [];
   for (let i = 0; i < goals.length; i++) {
+    if (elim[i]) continue;
     const g = goals[i];
     const color = COLORS[i % 8];
     let gx, gy, gw, gh;
@@ -921,16 +962,35 @@ canvas.addEventListener('touchstart', e => {
 
 // === 대시 ===
 let dashHold = false;
+let inited = false;
+function firstTouch() {
+  if (!inited) { inited = true; SFX.init(); }
+}
+document.addEventListener('touchstart', firstTouch, { once: true });
+document.addEventListener('mousedown', firstTouch, { once: true });
 canvas.addEventListener('mousedown', e => {
-  if (e.button === 0 && gs) { dashPressed = true; dashHold = true; }
+  if (e.button === 0 && gs) { dashPressed = true; dashHold = true; SFX.dash(); }
 });
 canvas.addEventListener('mouseup', e => {
   if (e.button === 0) dashHold = false;
 });
 const dashBtn = document.getElementById('dashBtn');
 if (dashBtn) {
-  dashBtn.addEventListener('touchstart', e => { e.preventDefault(); dashPressed = true; }, { passive: false });
+  dashBtn.addEventListener('touchstart', e => { e.preventDefault(); dashPressed = true; SFX.dash(); }, { passive: false });
 }
+const muteBtn = document.getElementById('muteBtn');
+if (muteBtn) {
+  muteBtn.addEventListener('click', () => {
+    const muted = SFX.toggleMute();
+    muteBtn.textContent = muted ? '🔇' : '🔊';
+  });
+  muteBtn.addEventListener('touchstart', e => { e.preventDefault(); }, { passive: false });
+}
+
+// 버튼 클릭 사운드
+document.querySelectorAll('.btn').forEach(b => {
+  b.addEventListener('click', () => SFX.click());
+});
 
 connect();
 </script>
